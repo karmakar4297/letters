@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Recommendation letters</title>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; max-width: 680px; margin: 28px auto; padding: 0 16px; color: #1f2328; background: #fff; }
+  h1 { font-size: 1.35rem; margin: 0 0 4px; }
+  .sub { color: #656d76; margin-bottom: 20px; }
+  .bar { height: 6px; background: #eaeef2; border-radius: 3px; margin-bottom: 22px; overflow: hidden; }
+  .bar > div { height: 100%; background: #2da44e; transition: width .3s; }
+  .item { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid #d0d7de; border-radius: 10px; margin-bottom: 10px; }
+  .item.done { background: #f6fbf7; color: #656d76; }
+  .item.done .title { text-decoration: line-through; }
+  .info { flex: 1; min-width: 0; }
+  .title { font-weight: 600; }
+  .meta { font-size: .9rem; color: #656d76; margin-top: 2px; }
+  .overdue { color: #cf222e; font-weight: 600; }
+  input[type=checkbox] { width: 22px; height: 22px; cursor: pointer; flex: none; }
+  button { border: 1px solid #d0d7de; background: #fff; border-radius: 6px; padding: 5px 12px; cursor: pointer; font-size: .9rem; }
+  button:hover { background: #f3f4f6; }
+  .busy { opacity: .5; pointer-events: none; }
+  a { color: #0969da; }
+</style>
+</head>
+<body>
+<h1 id="h">Loading…</h1>
+<div class="sub" id="sub"></div>
+<div class="bar"><div id="prog" style="width:0"></div></div>
+<div id="list"></div>
+
+<script>
+// Paste your Apps Script web-app URL here (ends in /exec):
+const API = 'https://script.google.com/macros/library/d/1OcuszFQRoNpPoFOUPUkV_6UFxhP6ihOqzn_vJ00qrOhfqkG5OiiPBACj/1';
+
+const TOKEN = new URLSearchParams(location.search).get('ref') || '';
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+function render(d) {
+  document.body.classList.remove('busy');
+  if (d.error) { alert(d.error); }
+  const tasks = d.tasks || [];
+  const total = tasks.length, sent = tasks.filter(t => t.done).length;
+  document.getElementById('h').textContent =
+    d.referee ? 'Recommendation letters: ' + d.referee : 'Link not recognised';
+  document.getElementById('sub').textContent = d.referee
+    ? sent + ' of ' + total + ' sent · ' + (total - sent) + ' remaining. Tick a box once a letter is submitted.'
+    : 'Please check that you opened the full link you were sent.';
+  document.getElementById('prog').style.width = total ? (100 * sent / total) + '%' : '0';
+
+  const list = document.getElementById('list');
+  list.innerHTML = '';
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+
+  tasks.forEach(t => {
+    const item = el('div', 'item' + (t.done ? ' done' : ''));
+
+    const cb = el('input');
+    cb.type = 'checkbox';
+    cb.checked = t.done;
+    cb.disabled = t.done;
+    cb.title = 'Mark as sent';
+    cb.onchange = () => save(t.row, true);
+
+    const info = el('div', 'info');
+    info.appendChild(el('div', 'title', t.inst + (t.pos ? ': ' + t.pos : '')));
+    const meta = el('div', 'meta');
+    const dl = el('span', null, t.deadline ? 'Deadline: ' + t.deadline : 'No deadline given');
+    if (!t.done && t.due < today.getTime()) dl.className = 'overdue';
+    meta.appendChild(dl);
+    if (t.done && t.doneOn) meta.appendChild(document.createTextNode(' · sent ' + t.doneOn));
+    if (t.link) {
+      meta.appendChild(document.createTextNode(' · '));
+      if (/^https?:\/\//.test(t.link)) {
+        const a = el('a', null, 'submission portal');
+        a.href = t.link; a.target = '_blank'; a.rel = 'noopener';
+        meta.appendChild(a);
+      } else {
+        meta.appendChild(document.createTextNode(t.link));
+      }
+    }
+    info.appendChild(meta);
+
+    item.appendChild(cb);
+    item.appendChild(info);
+    if (t.done) {
+      const undo = el('button', null, 'Undo');
+      undo.onclick = () => save(t.row, false);
+      item.appendChild(undo);
+    }
+    list.appendChild(item);
+  });
+}
+
+function fail(err) {
+  document.body.classList.remove('busy');
+  document.getElementById('h').textContent = 'Could not reach the server';
+  document.getElementById('sub').textContent = 'Please reload the page in a moment. (' + err + ')';
+}
+
+function load() {
+  if (!TOKEN) return render({});
+  fetch(API + '?ref=' + encodeURIComponent(TOKEN))
+    .then(r => r.json()).then(render).catch(fail);
+}
+
+function save(row, done) {
+  document.body.classList.add('busy');
+  // text/plain avoids a CORS preflight, which Apps Script does not answer.
+  fetch(API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ ref: TOKEN, row: row, done: done })
+  }).then(r => r.json()).then(render).catch(fail);
+}
+
+load();
+</script>
+</body>
+</html>
